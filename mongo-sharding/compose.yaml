@@ -1,0 +1,81 @@
+name: mongo-sharding
+services:
+
+  configSrv:
+    image: dh-mirror.gitverse.ru/mongo:latest
+    container_name: configSrv 
+    restart: always
+    ports:
+      - "28010:27019"
+    volumes:
+      - configsrv1-data:/data/db
+    command: '--configsvr --replSet config --bind_ip_all'
+    healthcheck:
+      test: [ "CMD", "mongosh", "--port", "27019", "--eval", "db.adminCommand('ping')" ]
+      interval: 5s
+      start_period: 10s
+
+  shard1:
+    image: dh-mirror.gitverse.ru/mongo:latest
+    container_name: shard1
+    restart: always
+    ports:
+      - "28020:27018"
+    volumes:
+      - shard1_data:/data/db
+    command: '--shardsvr --replSet shard1 --bind_ip_all'
+    healthcheck:
+      test: [ "CMD", "mongosh", "--port", "27018", "--eval", "db.adminCommand('ping')" ]
+      interval: 5s
+      start_period: 10s
+
+  shard2:
+    image: dh-mirror.gitverse.ru/mongo:latest
+    container_name: shard2
+    restart: always
+    ports:
+      - "28030:27018"
+    volumes:
+      - shard2_data:/data/db
+    command: '--shardsvr --replSet shard2 --bind_ip_all'
+    healthcheck:
+      test: [ "CMD", "mongosh", "--port", "27018", "--eval", "db.adminCommand('ping')" ]
+      interval: 5s
+      start_period: 10s
+  
+  
+  mongos_router:
+    image: dh-mirror.gitverse.ru/mongo:latest
+    container_name: mongos_router
+    restart: always
+    ports:
+      - "28040:27017"
+    command: 'mongos --configdb config/configSrv:27019 --bind_ip_all'
+    healthcheck:
+      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
+      interval: 5s
+      start_period: 10s
+    depends_on:
+      - configSrv
+
+  pymongo_api:
+    container_name: pymongo_api
+    build: 
+      context: api_app
+      dockerfile: Dockerfile
+    image: kazhem/pymongo_api:1.0.0
+    ports:
+      - 8080:8080
+    environment:
+      MONGODB_URL: "mongodb://mongos_router:27017"
+      MONGODB_DATABASE_NAME: "somedb"
+    depends_on:
+      - mongos_router
+      - shard1
+      - shard2
+
+
+volumes:
+  configsrv1-data:
+  shard1_data:
+  shard2_data:
